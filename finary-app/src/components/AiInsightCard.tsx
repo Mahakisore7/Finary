@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Sparkles, TrendingDown } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 
 export function AiInsightCard() {
   const [insight, setInsight] = useState<string | null>(null)
@@ -10,15 +10,36 @@ export function AiInsightCard() {
 
   useEffect(() => {
     async function fetchInsight() {
-      const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch('http://localhost:8000/api/v1/proactive-insight', {
-        headers: { 'Authorization': `Bearer ${session?.access_token}` }
-      })
-      const data = await res.json()
-      setInsight(data.insight)
+      try {
+        // 1. Get the current session and user
+        const { data: { session } } = await supabase.auth.getSession()
+        const { data: { user } } = await supabase.auth.getUser()
+
+        if (!user) return
+
+        // 2. Use the live Render URL from environment variables
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+        
+        const res = await fetch(`${baseUrl}/api/v1/proactive-insight`, {
+          method: 'GET',
+          headers: { 
+            'Authorization': `Bearer ${session?.access_token}`,
+            // 3. Pass the userId so the AI analyzes the correct data
+            'x-user-id': user.id 
+          }
+        })
+
+        if (!res.ok) throw new Error("Insight fetch failed")
+
+        const data = await res.json()
+        setInsight(data.insight)
+      } catch (error) {
+        console.error("Insight Error:", error)
+        setInsight("Unable to load insights at this time.")
+      }
     }
     fetchInsight()
-  }, [])
+  }, [supabase])
 
   return (
     <div className="relative group overflow-hidden rounded-3xl p-[1px] bg-gradient-to-r from-emerald-500/50 via-blue-500/50 to-purple-500/50 animate-gradient-x">
