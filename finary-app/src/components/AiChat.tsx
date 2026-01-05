@@ -18,7 +18,6 @@ export function AiChat() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
 
-  // Auto-scroll to the bottom when new messages arrive
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: 'smooth' })
@@ -34,27 +33,38 @@ export function AiChat() {
     setLoading(true)
 
     try {
+      // 1. Get the current session and user
       const { data: { session } } = await supabase.auth.getSession()
+      const { data: { user } } = await supabase.auth.getUser()
+
+      if (!user) throw new Error("User not authenticated")
+
+      // 2. Use the live Render URL from environment variables
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
       
-      const response = await fetch('http://localhost:8000/api/v1/chat', {
+      const response = await fetch(`${baseUrl}/api/v1/chat`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`
+          'Authorization': `Bearer ${session?.access_token}`,
+          // 3. Pass the userId in the header for the SQL Agent
+          'x-user-id': user.id 
         },
         body: JSON.stringify({ message: userMsg })
       })
 
+      if (!response.ok) throw new Error("Backend response error")
+
       const data = await response.json()
 
-      // FIX: Check if answer is an object and extract text, or stringify it
       const aiResponseText = typeof data.answer === 'object' 
         ? (data.answer.text || JSON.stringify(data.answer)) 
         : data.answer
 
       setMessages(prev => [...prev, { role: 'ai', text: aiResponseText }])
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'ai', text: "Sorry, I encountered an error. Please check if the backend is running." }])
+      console.error("AI Chat Error:", error)
+      setMessages(prev => [...prev, { role: 'ai', text: "I'm having trouble reaching the database. Please check your connection or backend logs." }])
     } finally {
       setLoading(false)
     }
@@ -62,13 +72,11 @@ export function AiChat() {
 
   return (
     <div className="flex flex-col h-[500px] w-full max-w-lg border border-zinc-800 bg-zinc-950 rounded-3xl overflow-hidden shadow-2xl">
-      {/* Header */}
       <div className="p-4 border-b border-zinc-800 bg-zinc-900/50 flex items-center gap-2">
         <Bot className="h-5 w-5 text-emerald-400" />
         <span className="font-bold text-xs tracking-widest uppercase text-zinc-400">Finary AI Advisor</span>
       </div>
       
-      {/* Chat Area */}
       <div className="flex-1 overflow-y-auto p-4">
         <div className="space-y-4">
           {messages.map((m, i) => (
@@ -88,11 +96,10 @@ export function AiChat() {
               AI is analyzing your database...
             </div>
           )}
-          <div ref={scrollRef} /> {/* Anchor for auto-scroll */}
+          <div ref={scrollRef} />
         </div>
       </div>
 
-      {/* Input Area */}
       <div className="p-4 bg-zinc-900/30 border-t border-zinc-800 flex gap-2">
         <Input 
           placeholder="Ask about your spending..." 
