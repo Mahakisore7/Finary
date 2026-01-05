@@ -37,9 +37,11 @@ export function AiChat() {
       const { data: { session } } = await supabase.auth.getSession()
       const { data: { user } } = await supabase.auth.getUser()
 
-      if (!user) throw new Error("User not authenticated")
+      if (!user) {
+        setMessages(prev => [...prev, { role: 'ai', text: "Please sign in to use the AI Advisor." }])
+        return
+      }
 
-      // 2. Use the live Render URL from environment variables
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
       
       const response = await fetch(`${baseUrl}/api/v1/chat`, {
@@ -47,7 +49,7 @@ export function AiChat() {
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token}`,
-          // 3. Pass the userId in the header for the SQL Agent
+          // Pass the specific ID of the logged-in user
           'x-user-id': user.id 
         },
         body: JSON.stringify({ message: userMsg })
@@ -57,14 +59,15 @@ export function AiChat() {
 
       const data = await response.json()
 
+      // Extract the text answer from the AI response
       const aiResponseText = typeof data.answer === 'object' 
-        ? (data.answer.text || JSON.stringify(data.answer)) 
+        ? (data.answer.text || data.answer.output || JSON.stringify(data.answer)) 
         : data.answer
 
       setMessages(prev => [...prev, { role: 'ai', text: aiResponseText }])
     } catch (error) {
       console.error("AI Chat Error:", error)
-      setMessages(prev => [...prev, { role: 'ai', text: "I'm having trouble reaching the database. Please check your connection or backend logs." }])
+      setMessages(prev => [...prev, { role: 'ai', text: "I'm having trouble connecting. Ensure the backend is live and database is connected." }])
     } finally {
       setLoading(false)
     }
