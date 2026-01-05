@@ -11,33 +11,42 @@ export function AiInsightCard() {
 
   useEffect(() => {
     async function fetchInsight() {
+      // 1. Check Session Storage to save Gemini API quota
+      const cachedInsight = sessionStorage.getItem('finary_ai_insight')
+      if (cachedInsight) {
+        setInsight(cachedInsight)
+        return
+      }
+
       setIsLoading(true)
       try {
-        // 1. Ensure user is authenticated before calling backend
+        // 2. Auth Handshake
         const { data: { session } } = await supabase.auth.getSession()
         const { data: { user } } = await supabase.auth.getUser()
 
         if (!user || !session) return
 
-        // 2. Use the live Render URL from environment variables
+        // 3. Environment Variable Resolution
         const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
         
         const res = await fetch(`${baseUrl}/api/v1/proactive-insight`, {
           method: 'GET',
           headers: { 
             'Authorization': `Bearer ${session.access_token}`,
-            // 3. SECURE HANDSHAKE: Pass the specific ID for multi-user isolation
-            'x-user-id': user.id 
+            'x-user-id': user.id // Strictly identifies the specific user
           }
         })
 
         if (!res.ok) throw new Error("Insight fetch failed")
 
         const data = await res.json()
+        
+        // 4. Update State and Cache
         setInsight(data.insight)
+        sessionStorage.setItem('finary_ai_insight', data.insight)
       } catch (error) {
         console.error("Insight Error:", error)
-        setInsight("Tracking your spending to unlock smart trends.")
+        setInsight("Track your spending to unlock personalized smart trends.")
       } finally {
         setIsLoading(false)
       }
