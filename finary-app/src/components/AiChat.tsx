@@ -18,7 +18,7 @@ export function AiChat() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
 
-  // Auto-scroll logic
+  // Auto-scroll logic to keep the latest message in view
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: 'smooth' })
@@ -34,7 +34,7 @@ export function AiChat() {
     setLoading(true)
 
     try {
-      // 1. Get the current session and user explicitly
+      // 1. Authenticate session for the Secure Handshake
       const { data: { session } } = await supabase.auth.getSession()
       const { data: { user } } = await supabase.auth.getUser()
 
@@ -43,7 +43,7 @@ export function AiChat() {
         return
       }
 
-      // 2. Resolve the Base URL for production
+      // 2. Resolve API Endpoint
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
       
       const response = await fetch(`${baseUrl}/api/v1/chat`, {
@@ -51,7 +51,7 @@ export function AiChat() {
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
-          // 3. THE PRIVACY HANDSHAKE: Strictly pass the logged-in user's ID
+          // PRIVACY HANDSHAKE: Injects the specific user identity into the AI Agent loop
           'x-user-id': user.id 
         },
         body: JSON.stringify({ message: userMsg })
@@ -61,22 +61,31 @@ export function AiChat() {
 
       const data = await response.json()
 
-      // Extract text safely from various agent response formats
-      const aiResponseText = typeof data.answer === 'object' 
-        ? (data.answer.output || data.answer.text || JSON.stringify(data.answer)) 
-        : data.answer
+      // --- BULLETPROOF PARSER: Fixes JSON Leakage ---
+      let aiResponseText = ""
+      const rawAnswer = data.answer
+
+      if (Array.isArray(rawAnswer)) {
+        // Handle the format: [{"type": "text", "text": "..."}] seen in screenshots
+        aiResponseText = rawAnswer[0]?.text || rawAnswer[0]?.output || JSON.stringify(rawAnswer)
+      } else if (typeof rawAnswer === 'object' && rawAnswer !== null) {
+        // Handle standard object outputs
+        aiResponseText = rawAnswer.output || rawAnswer.text || JSON.stringify(rawAnswer)
+      } else {
+        // Standard string output
+        aiResponseText = String(rawAnswer)
+      }
 
       setMessages(prev => [...prev, { role: 'ai', text: aiResponseText }])
     } catch (error) {
       console.error("AI Chat Error:", error)
-      setMessages(prev => [...prev, { role: 'ai', text: "I'm having trouble analyzing your specific data right now. Please check your backend logs." }])
+      setMessages(prev => [...prev, { role: 'ai', text: "I'm having trouble connecting to the AI Agent. Please ensure your backend is live." }])
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    /* MOBILE OPTIMIZATION: Height adjusted to h-[400px] for mobile, h-[500px] for desktop */
     <div className="flex flex-col h-[400px] md:h-[500px] w-full max-w-lg border border-zinc-800 bg-zinc-950 rounded-3xl overflow-hidden shadow-2xl transition-all">
       {/* Header */}
       <div className="p-4 border-b border-zinc-800 bg-zinc-900/50 flex items-center gap-2">
@@ -115,7 +124,6 @@ export function AiChat() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-          /* MOBILE OPTIMIZATION: text-base prevents auto-zoom on iOS */
           className="bg-zinc-950 border-zinc-800 text-white text-base focus-visible:ring-emerald-500 rounded-xl"
         />
         <Button 
